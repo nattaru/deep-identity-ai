@@ -31,7 +31,7 @@ st.markdown("""
         margin-bottom: 20px;
     }
     </style>
-    """, unsafe_allow_status=True)
+    """, unsafe_allow_html=True)
 
 # --- 2. ส่วนหลังบ้าน: การเชื่อมต่อ Gemini ---
 if "GEMINI_API_KEY" not in st.secrets:
