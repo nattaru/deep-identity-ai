@@ -2,45 +2,51 @@ import streamlit as st
 import google.generativeai as genai
 import json
 
-# --- 1. การตั้งค่าหน้าตาแอป ---
+# --- 1. การตั้งค่าหน้าตาแอป (UI Configuration) ---
 st.set_page_config(page_title="Deep Identity AI", page_icon="🔮", layout="centered")
 
+# แก้ไขจุดที่เคย Error: เปลี่ยนเป็น unsafe_allow_html=True
 st.markdown("""
     <style>
+    .stApp { background-color: #f0f2f6; }
     .stButton>button {
         width: 100%;
         border-radius: 12px;
-        height: 3em;
+        height: 3.5em;
         font-size: 16px;
         margin-bottom: 10px;
         background-color: #ffffff;
-        border: 2px solid #1565C0;
-        color: #1565C0;
+        border: 2px solid #1E88E5;
+        color: #1E88E5;
+        font-weight: bold;
         transition: 0.3s;
     }
     .stButton>button:hover {
-        background-color: #1565C0;
+        background-color: #1E88E5;
         color: white;
     }
     .question-box {
-        background-color: #e3f2fd;
-        padding: 25px;
-        border-radius: 15px;
-        border-left: 8px solid #1565C0;
-        font-size: 18px;
-        margin-bottom: 20px;
+        background-color: #ffffff;
+        padding: 30px;
+        border-radius: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-top: 10px solid #1E88E5;
+        font-size: 20px;
+        color: #333;
+        margin-bottom: 25px;
+        text-align: center;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ส่วนหลังบ้าน: การเชื่อมต่อ Gemini ---
+# --- 2. ส่วนหลังบ้าน: เชื่อมต่อ API ---
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("กรุณาใส่ API Key ใน Settings > Secrets ก่อนครับ")
+    st.error("ไม่พบ API Key! กรุณาใส่ GEMINI_API_KEY ในหน้า Settings > Secrets ของ Streamlit Cloud")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# ปรับ Instruction ให้ AI ส่งข้อมูลกลับมาเป็น JSON เสมอ
+# กำหนดบทบาทของ AI
 instruction = """
 คุณคือ Master Psychometrician หน้าที่คือวิเคราะห์ MBTI และ Enneagram
 **กฎเหล็ก:** คุณต้องตอบกลับในรูปแบบ JSON เท่านั้น ห้ามมีข้อความอื่นนอก JSON
@@ -53,7 +59,7 @@ instruction = """
   "analysis": "ผลสรุปจะใส่ตรงนี้เมื่อ is_final เป็น true เท่านั้น"
 }
 
-เมื่อคุณมั่นใจในผลลัพธ์ (Accuracy > 85%) ให้ส่ง is_final: true และใส่บทวิเคราะห์เต็มๆ ในช่อง analysis
+หมายเหตุ: ใน JSON ให้ใช้ true/false ตัวพิมพ์เล็กตามมาตรฐาน JSON แต่ใน Python Code เราจะจัดการเอง
 """
 
 model = genai.GenerativeModel(
@@ -61,47 +67,61 @@ model = genai.GenerativeModel(
     system_instruction=instruction
 )
 
-# --- 3. การจัดการ Session ---
+# --- 3. การจัดการสถานะของแอป (Session State) ---
+# แก้ไขจุดที่เคย Error: ใช้ True/False ตัวพิมพ์ใหญ่สำหรับ Python
 if "chat" not in st.session_state:
     st.session_state.chat = model.start_chat(history=[])
     st.session_state.last_response = {
-        "question": "ยินดีต้อนรับสู่การค้นหาตัวตนที่แท้จริง พร้อมจะเริ่มการวิเคราะห์แบบเจาะลึกหรือยังครับ?",
-        "options": ["เริ่มกันเลย!", "ขอข้อมูลเพิ่มเติม"],
-        "is_final": false
+        "question": "สวัสดีครับ ยินดีต้อนรับสู่การวิเคราะห์ตัวตนแบบเจาะลึก... คุณพร้อมจะเริ่มค้นหาคำตอบหรือยัง?",
+        "options": ["เริ่มกันเลย!", "ยังไม่พร้อม"],
+        "is_final": False
     }
 
-# --- 4. ฟังก์ชันการส่งข้อมูล ---
-def send_answer(answer):
-    with st.spinner("AI กำลังวิเคราะห์..."):
-        response = st.session_state.chat.send_message(answer)
+# ฟังก์ชันส่งคำตอบ
+def send_answer(selected_option):
+    with st.spinner("AI กำลังวิเคราะห์คำตอบของคุณ..."):
         try:
-            # แปลงข้อความ JSON จาก AI เป็น Dictionary ของ Python
-            st.session_state.last_response = json.loads(response.text)
-        except:
-            st.error("เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง")
+            response = st.session_state.chat.send_message(selected_option)
+            # แปลง JSON string จาก AI มาเป็น Python Dictionary
+            clean_json = response.text.replace('```json', '').replace('
+```', '').strip()
+            st.session_state.last_response = json.loads(clean_json)
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาดในการประมวลผล: {e}")
 
-# --- 5. ส่วนหน้าบ้าน (Frontend) ---
+# --- 4. ส่วนหน้าบ้าน (Display) ---
 st.title("🔮 Deep Identity AI")
-st.write("แตะเลือกคำตอบที่ตรงกับความเป็นคุณที่สุด")
+st.write("ระบบวิเคราะห์บุคลิกภาพ Adaptive ขั้นสูง")
 
 res = st.session_state.last_response
 
+# เช็คว่าเป็นคำถามทั่วไปหรือผลลัพธ์สุดท้าย
 if not res.get("is_final"):
     # แสดงคำถาม
-    st.markdown(f'<div class="question-box">{res["question"]}</div>', unsafe_allow_status=True)
+    st.markdown(f'<div class="question-box">{res["question"]}</div>', unsafe_allow_html=True)
     
-    # สร้างปุ่มจากตัวเลือกที่ AI ส่งมา
-    for option in res["options"]:
+    # สร้างปุ่มตัวเลือก
+    cols = st.columns(1) # ปรับเป็น 1 คอลัมน์เพื่อให้กดง่ายในมือถือ
+    for option in res.get("options", []):
         if st.button(option):
             send_answer(option)
             st.rerun()
 else:
-    # แสดงผลสรุปสุดท้าย
+    # แสดงผลการวิเคราะห์สุดท้าย
     st.balloons()
     st.success("วิเคราะห์เสร็จสมบูรณ์!")
-    st.markdown("### 📊 ผลการวิเคราะห์ของคุณ")
-    st.write(res["analysis"])
+    st.markdown("### 📊 ผลการวิเคราะห์อย่างละเอียด")
+    st.info(res.get("analysis"))
     
-    if st.button("เริ่มทำแบบทดสอบใหม่"):
+    if st.button("ทำแบบทดสอบใหม่อีกครั้ง"):
+        st.session_state.clear()
+        st.rerun()
+
+# แถบข้างด้านข้าง
+with st.sidebar:
+    st.write("### ข้อมูลแอป")
+    st.caption("เวอร์ชัน: 1.2 (Stable)")
+    st.caption("โมเดล: Gemini 1.5 Flash")
+    if st.button("Reset Game"):
         st.session_state.clear()
         st.rerun()
